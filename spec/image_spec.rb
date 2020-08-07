@@ -320,6 +320,26 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       (expect text[0][:y]).to eql 276.036
     end
 
+    it 'should not allow inline image to affect the cursor position of the following paragraph' do
+      pdf = to_pdf <<~'EOS', analyze: true
+      before
+
+      next
+      EOS
+
+      expected_gap = ((pdf.find_unique_text 'before')[:y] - (pdf.find_unique_text 'next')[:y]).round 2
+
+      pdf = to_pdf <<~'EOS', analyze: true
+      before image:tall.svg[pdfwidth=0.5in] after
+
+      next
+      EOS
+
+      actual_gap = ((pdf.find_unique_text %r/before/)[:y] - (pdf.find_unique_text 'next')[:y]).round 2
+      (expect actual_gap).to eql expected_gap
+      (expect (pdf.find_unique_text %r/before/)[:y]).to eql (pdf.find_unique_text %r/after/)[:y]
+    end
+
     it 'should set color space on page that only has image and stamp' do
       pdf = to_pdf <<~'EOS', pdf_theme: { footer_recto_right_content: 'pg {page-number}' }, enable_footer: true
       image::square.svg[]
@@ -584,7 +604,7 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       (expect images).to have_size 1
       image = pdf.images[0]
       (expect image[:page_number]).to eql 1
-      (expect image[:implicit_width]).to eql 287
+      (expect image[:intrinsic_width]).to eql 287
       (expect image[:x]).to eql 48.24
       (expect image[:y]).to eql 756.0
       (expect image[:width]).to eql 287 * 0.75
@@ -686,7 +706,7 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       pdf = to_pdf 'image::waterfall.bmp[Waterfall,240]', analyze: :image
       (expect pdf.images).to have_size 1
       image = pdf.images[0]
-      (expect image[:implicit_width]).to eql 240
+      (expect image[:intrinsic_width]).to eql 240
       (expect image[:width]).to eql 180.0
     end if defined? GMagick::Image
   end
@@ -710,7 +730,7 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       pdf = to_pdf 'image::tux.gif[Tux]', analyze: :image
       (expect pdf.images).to have_size 1
       image = pdf.images[0]
-      (expect image[:implicit_width]).to eql 204
+      (expect image[:intrinsic_width]).to eql 204
       (expect image[:width]).to eql 153.0
     end if defined? GMagick::Image
 
@@ -718,7 +738,7 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       pdf = to_pdf 'image:tux.gif[Tux,16] is always a good sign.', analyze: :image
       (expect pdf.images).to have_size 1
       image = pdf.images[0]
-      (expect image[:implicit_width]).to eql 204
+      (expect image[:intrinsic_width]).to eql 204
       (expect image[:width]).to eql 12.0
     end if defined? GMagick::Image
   end
@@ -1259,6 +1279,18 @@ describe 'Asciidoctor::PDF::Converter - Image' do
       line1_spacing = (text[0][:y] - text[1][:y]).round 2
       line2_spacing = (text[1][:y] - text[2][:y]).round 2
       (expect line1_spacing).to eql line2_spacing
+    end
+
+    it 'should not scale image if pdfwidth matches intrinsic width' do
+      pdf = to_pdf <<~'EOS', analyze: :image
+      see image:tux.png[pdfwidth=204] run
+      EOS
+
+      images = pdf.images
+      (expect images).to have_size 1
+      image = images[0]
+      (expect image[:width]).to eql image[:intrinsic_width].to_f
+      (expect image[:height]).to eql image[:intrinsic_height].to_f
     end
 
     it 'should scale image down to fit available height', visual: true do

@@ -93,7 +93,7 @@ describe 'Asciidoctor::PDF::Converter - Index' do
     (expect index_lines).to include 'custom behavior, 1'
   end
 
-  it 'should not add index entries in delimited block to index twice' do
+  it 'should not add index entries inside delimited block to index twice' do
     pdf = to_pdf <<~'EOS', doctype: :book, analyze: true
     = Document Title
 
@@ -226,6 +226,43 @@ describe 'Asciidoctor::PDF::Converter - Index' do
     EOS
   end
 
+  it 'should not group terms with different casing' do
+    pdf = to_pdf <<~'EOS', doctype: :book, analyze: true
+    = Document Title
+
+    ((This)) is not the same as ((this)) or ((that)).
+
+    [index]
+    == Index
+    EOS
+
+    (expect (pdf.lines pdf.find_text page_number: 3).join ?\n).to eql <<~'EOS'.chomp
+    Index
+    T
+    that, 1
+    This, 1
+    this, 1
+    EOS
+  end
+
+  it 'should sort capitalized terms ahead of non-capitalized terms' do
+    pdf = to_pdf <<~'EOS', doctype: :book, analyze: true
+    = Document Title
+
+    ((O.A.R.)) is a band, whereas ((oar)) is something you use to propel a boat.
+
+    [index]
+    == Index
+    EOS
+
+    (expect (pdf.lines pdf.find_text page_number: 3).join ?\n).to eql <<~'EOS'.chomp
+    Index
+    O
+    O.A.R., 1
+    oar, 1
+    EOS
+  end
+
   it 'should group index entries that start with symbol under symbol category' do
     pdf = to_pdf <<~'EOS', doctype: :book, analyze: true
     = Document Title
@@ -297,6 +334,17 @@ describe 'Asciidoctor::PDF::Converter - Index' do
     index_page_lines = pdf.lines pdf.find_text page_number: index_pagenum
     terms = index_page_lines.select {|it| it.include? ',' }.map {|it| (it.split ',', 2)[0] }
     (expect terms).to eql %w(anchor AsciiDoc Asciidoctor authoring)
+  end
+
+  it 'should start with no categories' do
+    index = Asciidoctor::PDF::IndexCatalog.new
+    (expect index).to be_empty
+  end
+
+  it 'should initiate category with no terms' do
+    index = Asciidoctor::PDF::IndexCatalog.new
+    index.init_category 'C'
+    (expect (index.find_category 'C').terms).to be_empty
   end
 
   it 'should sort arabic page numbers in index term numerically' do

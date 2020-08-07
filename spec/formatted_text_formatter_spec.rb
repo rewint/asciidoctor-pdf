@@ -19,6 +19,22 @@ describe Asciidoctor::PDF::FormattedText::Formatter do
       (expect output[1][:color]).to eql '0000FF'
     end
 
+    it 'should allow font weight to be set on nested phrase' do
+      input = '<span style="font-weight: bold">new</span> release'
+      output = subject.format input
+      (expect output).to have_size 2
+      (expect output[0][:text]).to eql 'new'
+      (expect output[0][:styles].to_a).to eql [:bold]
+    end
+
+    it 'should allow font style to be set on nested phrase' do
+      input = 'This is <span style="font-style: italic">so</span> easy'
+      output = subject.format input
+      (expect output).to have_size 3
+      (expect output[1][:text]).to eql 'so'
+      (expect output[1][:styles].to_a).to eql [:italic]
+    end
+
     it 'should warn if text contains invalid markup' do
       (expect do
         input = 'before <foo>bar</foo> after'
@@ -28,12 +44,28 @@ describe Asciidoctor::PDF::FormattedText::Formatter do
       end).to log_message severity: :ERROR, message: /^failed to parse formatted text:/
     end
 
-    it 'should allow span tag to control width and text alignment' do
+    it 'should allow span tag to control width' do
+      output = subject.format '<span style="width: 1in">hi</span>'
+      (expect output).to have_size 1
+      (expect output[0][:text]).to eql 'hi'
+      (expect output[0][:width]).to eql '1in'
+      (expect output[0][:align]).to be_nil
+    end
+
+    it 'should allow span tag to align text to center within width' do
       output = subject.format '<span style="width: 1in; align: center">hi</span>'
       (expect output).to have_size 1
       (expect output[0][:text]).to eql 'hi'
       (expect output[0][:width]).to eql '1in'
       (expect output[0][:align]).to eql :center
+    end
+
+    it 'should allow span tag to align text to right within width' do
+      output = subject.format '<span style="width: 1in; align: right">hi</span>'
+      (expect output).to have_size 1
+      (expect output[0][:text]).to eql 'hi'
+      (expect output[0][:width]).to eql '1in'
+      (expect output[0][:align]).to eql :right
     end
   end
 
@@ -370,8 +402,12 @@ describe Asciidoctor::PDF::FormattedText::Formatter do
     end
 
     it 'should apply width and alignment specified by span tag', visual: true do
-      to_file = to_pdf_file '|+++<span style="width: 1in; align: center; background-color: #ffff00">hi</span>+++|', 'text-formatter-width-text-alignment.pdf'
-      (expect to_file).to visually_match 'text-formatter-width-text-alignment.pdf'
+      %w(center right).each do |align|
+        to_file = to_pdf_file <<~EOS, %(text-formatter-align-#{align}-within-width.pdf)
+        |+++<span style="width: 1in; align: #{align}; background-color: #ffff00">hi</span>+++|
+        EOS
+        (expect to_file).to visually_match %(text-formatter-align-#{align}-within-width.pdf)
+      end
     end
 
     it 'should not warn if text contains invalid markup in scratch document' do
@@ -511,6 +547,16 @@ describe Asciidoctor::PDF::FormattedText::Formatter do
       (expect text[0][:font_size].to_f.round 2).to eql 14.0
       (expect text[1][:font_size]).to be 12
       (expect text[2][:font_size].to_f.round 2).to eql 10.0
+    end
+
+    it 'should base font size roles on large and small theme keys if not specified in theme' do
+      pdf_theme = build_pdf_theme({ base_font_size: 12, base_font_size_large: 18, base_font_size_small: 9 }, (fixture_file 'extends-no-theme.yml'))
+      pdf = to_pdf '[.big]#big# and [.small]#small#', pdf_theme: pdf_theme, analyze: true
+      text = pdf.text
+      (expect text).to have_size 3
+      (expect text[0][:font_size].to_f.round 2).to eql 18.0
+      (expect text[1][:font_size]).to be 12
+      (expect text[2][:font_size].to_f.round 2).to eql 9.0
     end
 
     it 'should allow theme to control formatting applied to phrase by role' do
